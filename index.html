@@ -57,7 +57,7 @@ details p{font-size:12px;margin:8px 0}
 .s-head *{color:#fff}
 .under{height:.07in;background:var(--stripe);flex:0 0 auto}
 .body{flex:1 1 auto;display:flex;flex-direction:column;padding:.14in .5in .4in;min-height:0}
-.lab{font-size:11.5px;font-weight:var(--lab-w);letter-spacing:var(--lab-track);text-transform:uppercase;text-align:center}
+.lab{font-size:14.5px;font-weight:var(--lab-w);letter-spacing:var(--lab-track);text-transform:uppercase;text-align:center}
 .val{font-family:var(--display);font-weight:var(--dw);font-style:var(--ds);letter-spacing:var(--track);text-transform:uppercase;text-align:center;line-height:1.08;white-space:nowrap;width:100%}
 .marca-box{text-align:center;padding:.04in 0 .12in;position:relative}
 .marca-box .val{font-size:96px;line-height:1.05;margin-top:2px}
@@ -68,7 +68,7 @@ details p{font-size:12px;margin:8px 0}
 .cell .val.wrap{white-space:normal}
 .prices{display:flex;flex-direction:column;flex:1 1 auto;gap:.12in;padding-top:.14in;min-height:0}
 .pbox{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;border-radius:var(--rad);min-width:0;min-height:0}
-.pbox .lab{font-size:14px}
+.pbox .lab{font-size:17px}
 .pbox .val{margin-top:3px}
 .pbox.cont{flex:0 0 auto;border:3px solid #000;padding:.1in .1in .12in}
 .pbox.cont .val{font-size:66px}
@@ -139,11 +139,12 @@ details p{font-size:12px;margin:8px 0}
       <button class="btn btn-ghost" id="impClip" type="button" title="Importar lo copiado con el marcador">📋 Desde portapapeles</button>
       <button class="btn btn-ghost" id="impCfg" type="button" title="Configurar el servicio de lectura de links">⚙ Servicio</button>
     </div>
-    <details style="margin-top:10px">
-      <summary>Importar con 1 clic (marcador)</summary>
+    <details style="margin-top:10px" open>
+      <summary>Sin pegar nada: favorito de 1 clic</summary>
       <p>1) Arrastra este botón a tu barra de favoritos: <a id="impBm" class="bm" href="#" onclick="return false">Copiar ficha</a><br>
-      2) Abre el auto en la web y haz clic en el favorito <b>Copiar ficha</b>.<br>
-      3) Vuelve aquí y presiona <b>📋 Desde portapapeles</b>.</p>
+      2) Abre el auto en la web y haz clic en el favorito.<br>
+      3) Vuelve a esta pestaña: <b>los datos se cargan solos</b> (si el navegador pide permiso para leer el portapapeles, acéptalo).</p>
+      <p id="impBm2wrap" style="display:none">Opción directa: arrastra <a id="impBm2" class="bm" href="#" onclick="return false">Enviar al portaprecios</a>. En la página del auto, un clic abre esta herramienta con los datos ya cargados (requiere permitir ventanas emergentes).</p>
     </details>
     <div id="impCfgWrap" style="display:none;margin-top:10px">
       <div class="f"><label>URL del servicio de lectura (Cloudflare Worker de Americar)</label>
@@ -293,10 +294,11 @@ function parseVehicleHTML(html){
   const out = {};
   const num = x => String(x||'').replace(/\D/g,'');
   const title = x => String(x||'').toLowerCase().replace(/(^|\s)\S/g,c=>c.toUpperCase());
+  const fuel = x => title(x).replace(/^Diesel$/,'Diésel').replace(/^Hibrido/,'Híbrido').replace(/^Electrico$/,'Eléctrico');
   let ld = null;
-  doc.querySelectorAll('script[type="application/ld+json"]').forEach(sc=>{
-    try{ const j = JSON.parse(sc.textContent); (Array.isArray(j)?j:[j]).forEach(o=>{ if(o && o['@type']==='Car') ld = o; }); }catch(e){}
-  });
+  const isCar = o => o && typeof o==='object' && [].concat(o['@type']||[]).some(x=>/^(Car|Vehicle|Product)$/i.test(x)) && (o.brand||o.model||o.offers||o.vehicleModelDate);
+  const scan = o => { if (!o || typeof o!=='object') return; if (isCar(o) && !ld) ld = o; if (Array.isArray(o)) o.forEach(scan); else if (o['@graph']) scan(o['@graph']); };
+  doc.querySelectorAll('script[type="application/ld+json"]').forEach(sc=>{ try{ scan(JSON.parse(sc.textContent)); }catch(e){} });
   // datos embebidos por el framework (llaves con comillas escapadas)
   const flight = k => { const m = html.match(new RegExp(k+'\\\\*"\\s*:\\s*\\\\*"([^"\\\\]+)')); return m ? m[1] : ''; };
   const text = (doc.body ? doc.body.textContent : '').replace(/\s+/g,' ');
@@ -305,7 +307,7 @@ function parseVehicleHTML(html){
     if (ld.model) out.modelo = ld.model;
     if (ld.vehicleModelDate) out.ano = String(ld.vehicleModelDate);
     if (ld.mileageFromOdometer && ld.mileageFromOdometer.value!=null) out.km = String(ld.mileageFromOdometer.value);
-    if (ld.fuelType) out.combustible = title(ld.fuelType);
+    if (ld.fuelType) out.combustible = fuel(ld.fuelType);
     if (ld.vehicleTransmission) out.transmision = title(String(ld.vehicleTransmission).replace(/MECANICA/i,'Mecánica').replace(/AUTOMATICA/i,'Automática'));
     if (ld.offers && ld.offers.price) out.precioFin = num(ld.offers.price);
   }
@@ -320,6 +322,22 @@ function parseVehicleHTML(html){
   // km / transmisión / combustible desde texto si el JSON-LD no los trajo
   if (!out.km && (m = text.match(/([\d.]+)\s*Km\b/i))) out.km = num(m[1]);
   if (!out.transmision && (m = text.match(/\b(Autom[aá]tica|Mec[aá]nica)\b/i))) out.transmision = title(m[1].replace(/a(?=tica$)/i,'á').replace(/automatica/i,'Automática').replace(/mecanica/i,'Mecánica'));
+  // --- Año y combustible: respaldos cuando la página no los trae en el JSON-LD ---
+  if (!out.ano){ const v = flight('vehicleModelDate')||flight('modelDate')||flight('item_year')||flight('year'); if (/^(19|20)\d{2}$/.test(v)) out.ano = v; }
+  if (!out.combustible){ const v = flight('fuelType')||flight('fuel')||flight('item_fuel'); if (v) out.combustible = fuel(v); }
+  if (!out.ano || !out.combustible){
+    // La ficha muestra en secuencia: Año · Km · Transmisión · Combustible. Se ubica por el km del propio auto.
+    const kmTxt = out.km ? String(out.km).replace(/\B(?=(\d{3})+(?!\d))/g,'.') : '';
+    let idx = -1;
+    if (kmTxt){ const r = new RegExp(kmTxt.replace(/\./g,'\\.')+'\\s*Km\\b','i').exec(text); if (r) idx = r.index; }
+    if (idx<0){ const r = /\b\d{1,3}(?:\.\d{3})+\s*Km\b/i.exec(text); if (r) idx = r.index; }
+    if (idx>-1){
+      const before = text.slice(Math.max(0,idx-60), idx), after = text.slice(idx, idx+200);
+      if (!out.ano){ const ys = before.match(/\b(?:19|20)\d{2}\b/g); if (ys) out.ano = ys[ys.length-1]; }
+      if (!out.combustible){ const f = /\b(Gasolina|Bencina|Di[eé]sel|H[ií]brido(?:\s+enchufable)?|El[eé]ctrico|Gas)\b/i.exec(after); if (f) out.combustible = title(f[1].replace(/diesel/i,'Diésel').replace(/hibrido/i,'Híbrido').replace(/electrico/i,'Eléctrico')); }
+    }
+  }
+  if (!out.ano){ const og = (doc.querySelector('meta[property="og:title"]')||{}).content || (doc.title||''); const y = og.match(/\b(?:19|20)\d{2}\b/); if (y) out.ano = y[0]; }
   return out;
 }
 const IMP_LABELS = {marca:'Marca',modelo:'Modelo',version:'Versión',ano:'Año',km:'Kilometraje',transmision:'Transmisión',combustible:'Combustible',precio:'Precio contado',precioFin:'Precio financiamiento'};
@@ -336,6 +354,8 @@ function runImport(html, url){
   if (got.length < 4){ impMsg('err','No pude reconocer un vehículo en ese contenido. Verifica que sea la ficha de un auto (no el listado).'); return false; }
   applyImport(d); S.origen = url || 'importado'; save();
   const miss = [];
+  if (!d.ano) miss.push('año (la página no lo entregó; se imprime “—”)');
+  if (!d.combustible) miss.push('combustible (la página no lo entregó; se imprime “—”)');
   if (!d.precioFin) miss.push('precio con financiamiento (la página no lo informa; se imprime “—”)');
   if (!d.precio) miss.push('precio contado');
   const note = '';
@@ -354,7 +374,11 @@ async function fetchCatalog(url){
   for (const t of tries){ try{ return await t(); }catch(e){} }
   throw new Error('sin acceso');
 }
-const BOOKMARKLET = "javascript:(async()=>{try{const h=await (await fetch(location.href,{credentials:'same-origin'})).text();await navigator.clipboard.writeText('FICHA_SRC\\n'+location.href+'\\n'+h);alert('Ficha copiada. Vuelve al portaprecios y presiona Desde portapapeles.')}catch(e){alert('No se pudo copiar: '+e.message)}})()";
+const BOOKMARKLET = "javascript:(async()=>{try{const h=await (await fetch(location.href,{credentials:'same-origin'})).text();await navigator.clipboard.writeText('FICHA_SRC\\n'+location.href+'\\n'+h);alert('Ficha copiada. Vuelve al portaprecios: se carga sola.')}catch(e){alert('No se pudo copiar: '+e.message)}})()";
+function bookmarkletSend(){
+  const T = location.href.split('#')[0];
+  return "javascript:(async()=>{try{const h=await (await fetch(location.href,{credentials:'same-origin'})).text();const w=window.open('"+T+"','portaprecios');if(!w)throw new Error('Permite las ventanas emergentes');const u=location.href;const s=()=>w.postMessage({t:'FICHA_SRC',url:u,html:h},'*');window.addEventListener('message',e=>{if(e.source===w&&e.data==='PP_READY')s()});setTimeout(s,2500);setTimeout(s,6000)}catch(e){alert('No se pudo enviar: '+e.message)}})()";
+}
 function importFromClipText(t){
   const m = /^FICHA_SRC\r?\n(\S+)\r?\n([\s\S]*)$/.exec(t||'');
   if (m){ $('impUrl').value = m[1]; return runImport(m[2], m[1]); }
@@ -363,6 +387,7 @@ function importFromClipText(t){
 }
 function bindImporter(){
   $('impBm').href = BOOKMARKLET;
+  if (/^https?:/.test(location.protocol)){ $('impBm2').href = bookmarkletSend(); $('impBm2wrap').style.display='block'; }
   $('impClip').addEventListener('click', async ()=>{
     try{ const t = await navigator.clipboard.readText(); const r = importFromClipText(t); if (r===null) impMsg('warn','El portapapeles no tiene una ficha copiada. Abre el auto en la web y usa el favorito <b>Copiar ficha</b> primero.'); }
     catch(e){ $('impSrcWrap').style.display='block'; $('impSrc').focus(); impMsg('warn','El navegador no dejó leer el portapapeles. Pega con <b>Ctrl+V</b> en el cuadro de abajo y se importa solo.'); }
@@ -401,6 +426,23 @@ function resetAll(){
   bindEditor(); bindImporter();
   $('btnPrint').addEventListener('click',()=>{ fitAll(); window.print(); });
   $('btnReset').addEventListener('click',()=>{ if(confirm('¿Restablecer el ejemplo? Se conserva el concesionario.')) resetAll(); });
+  // Importación automática: al volver a esta pestaña, si el favorito dejó una ficha en el portapapeles
+  let away=false, lastClip='';
+  const autoClip = async ()=>{
+    if (document.hidden || !away) return; away=false;
+    try{ const c = await navigator.clipboard.readText(); if (c && c!==lastClip && /^FICHA_SRC\r?\n/.test(c)){ lastClip=c; importFromClipText(c); } }catch(e){}
+  };
+  window.addEventListener('blur',()=>{ away=true; });
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden) away=true; else autoClip(); });
+  window.addEventListener('focus', autoClip);
+  // Recepción directa desde el favorito "Enviar al portaprecios"
+  let lastMsg='';
+  window.addEventListener('message', e=>{
+    const d=e.data; if(!d || d.t!=='FICHA_SRC' || typeof d.html!=='string' || d.html.length<500) return;
+    const key=(d.url||'')+'|'+d.html.length; if(key===lastMsg) return; lastMsg=key;
+    $('impUrl').value=d.url||''; runImport(d.html, d.url||'');
+  });
+  try{ if (window.opener) window.opener.postMessage('PP_READY','*'); }catch(e){}
   syncEditor(); render();
 })();
 </script>
